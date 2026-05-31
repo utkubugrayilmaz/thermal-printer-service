@@ -76,6 +76,11 @@ class ConnectionManager:
     async def check_hardware_status(self) -> Optional[PrinterError]:
         if self._mode == ConnectionMode.SIMULATION and self._simulator:
             return await self._simulator.check_status()
+        # Gerçek yazıcı bağlantısı beklenmedik şekilde kopmuşsa reconnect başlat
+        if self._real_printer is None and self._connected:
+            self._connected = False
+            if not self._reconnect_task or self._reconnect_task.done():
+                self._reconnect_task = asyncio.create_task(self._reconnect_loop())
         return None
 
     async def print(self, content: str, content_type: str, copies: int = 1) -> None:
@@ -84,6 +89,10 @@ class ConnectionManager:
         elif self._real_printer:
             await self._print_real(content, content_type, copies)
         else:
+            # Yazıcı bağlantısı yok — reconnect döngüsünü tetikle
+            self._connected = False
+            if not self._reconnect_task or self._reconnect_task.done():
+                self._reconnect_task = asyncio.create_task(self._reconnect_loop())
             raise RuntimeError(PrinterError.COMM_ERROR)
 
     def get_paper_info(self) -> tuple[float, float]:
@@ -123,6 +132,20 @@ class ConnectionManager:
             self._mode = ConnectionMode.SIMULATION
         except Exception as e:
             raise RuntimeError(PrinterError.COMM_ERROR) from e
+
+    async def _reconnect_loop(self) -> None:
+        logger.info("Starting reconnect loop", extra={"mode": self._mode})
+        for attempt in range(1, 6):
+            backoff = settings.retry_backoff_base ** attempt
+            logger.info("Reconnect attempt", extra={"attempt": attempt, "backoff_seconds": backoff})
+            await asyncio.sleep(backoff)
+            try:
+                await self.connect(self._mode)
+                logger.info("Reconnected successfully", extra={"attempt": attempt})
+                return
+            except Exception as exc:
+                logger.warning("Reconnect attempt failed", extra={"attempt": attempt, "error": str(exc)})
+        logger.error("Reconnect exhausted, giving up")
 
     async def _print_real(self, content: str, content_type: str, copies: int) -> None:
         loop = asyncio.get_event_loop()

@@ -1,6 +1,5 @@
 import asyncio
 import random
-from datetime import datetime, timezone
 from typing import Optional
 from app.db.models import PrinterError
 from app.core.logger import get_logger
@@ -48,7 +47,7 @@ class PrinterSimulator:
         self._lock = asyncio.Lock()
 
     async def connect(self) -> None:
-        await asyncio.sleep(0.1)  # simulate USB/ETH handshake
+        await asyncio.sleep(0.1)
         self.state.connected = True
         logger.info("Simulator connected", extra={"event": "connect"})
 
@@ -90,10 +89,8 @@ class PrinterSimulator:
             buf += CMD_QR_MODEL
             buf += CMD_QR_SIZE
             buf += CMD_QR_CORRECTION
-
             buf += GS + b'(k' + bytes([length & 0xFF, (length >> 8) & 0xFF]) + b'\x31\x50\x30'
             buf += data
-
             buf += GS + b'(k\x03\x00\x31\x51\x30'
             buf += CMD_FEED_LINE * 2
 
@@ -102,24 +99,23 @@ class PrinterSimulator:
 
     async def print(self, content: str, content_type: str, copies: int = 1) -> None:
 
-        # # --- CHAOS TEST BACKDOOR ---
-        # if content_type == "text":
-        #     if "FAIL_PAPER" in content:
-        #         self.force_paper_out()
-        #     elif "FAIL_HEAT" in content:
-        #         self.force_overheat()
-        #     elif "FAIL_JAM" in content:
-        #         self.force_cover_open()  # Kapak açıldı/sıkıştı hatası verir
-        #     elif "FAIL_COMM" in content:
-        #         raise RuntimeError(PrinterError.COMM_ERROR)  # Direkt COMM hatası fırlat
-        # # ---------------------------
+        # --- CHAOS TEST BACKDOOR ---
+        if content_type == "text":
+            if "FAIL_PAPER" in content:
+                self.force_paper_out()
+            elif "FAIL_HEAT" in content:
+                self.force_overheat()
+            elif "FAIL_JAM" in content:
+                self.force_cover_open()
+            elif "FAIL_COMM" in content:
+                raise RuntimeError(PrinterError.COMM_ERROR)
+        # ---------------------------
 
         async with self._lock:
 
             hw_error = await self.check_status()
             if hw_error:
                 raise RuntimeError(hw_error)
-
 
             if random.random() < self.ERROR_RATE:
                 raise RuntimeError(PrinterError.COMM_ERROR)
@@ -130,12 +126,11 @@ class PrinterSimulator:
                     commands = self._build_escpos_commands(content, content_type)
                     cmd_bytes = len(commands)
 
-
                     latency = min(cmd_bytes / 2048, 2.0)
                     await asyncio.sleep(latency)
 
-                    lines = len(content.splitlines()) + 3  # +3 for header/footer
-                    paper_used_cm = lines * 0.33           # ~3.3mm per line
+                    lines = len(content.splitlines()) + 3
+                    paper_used_cm = lines * 0.33
                     self.state.paper_remaining_cm = max(
                         0.0, self.state.paper_remaining_cm - paper_used_cm
                     )
@@ -160,7 +155,6 @@ class PrinterSimulator:
 
     def get_print_count(self) -> int:
         return self.state.print_count
-
 
     def force_paper_out(self) -> None:
         self.state.paper_remaining_cm = 0.0
