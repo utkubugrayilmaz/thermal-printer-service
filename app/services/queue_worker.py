@@ -48,16 +48,22 @@ async def _process_job(job_id: str) -> None:
         if job.status not in (JobStatus.QUEUED, JobStatus.PROCESSING):
             return
 
-
         job.status = JobStatus.PROCESSING
         job.attempt += 1
         job.updated_at = datetime.now(timezone.utc)
         session.add(job)
         session.commit()
 
+        # --- ÇÖZÜM: Session kapanmadan önce ihtiyacımız olan verileri kopyalıyoruz ---
+        attempt = job.attempt
+        max_attempts = job.max_attempts
+        content = job.content
+        content_type = job.content_type
+        copies = job.copies
+
     logger.info(
         "Processing job",
-        extra={"job_id": job_id, "attempt": job.attempt, "content_type": job.content_type},
+        extra={"job_id": job_id, "attempt": attempt, "content_type": content_type},
     )
 
     if not connection_manager.is_connected():
@@ -70,12 +76,12 @@ async def _process_job(job_id: str) -> None:
         return
 
     last_error: str = ""
-    for attempt in range(1, job.max_attempts + 1):
+    for current_attempt in range(1, max_attempts + 1):
         try:
             await connection_manager.print(
-                content=job.content,
-                content_type=job.content_type,
-                copies=job.copies,
+                content=content,
+                content_type=content_type,
+                copies=copies,
             )
             await _succeed_job(job_id)
             return
@@ -93,22 +99,22 @@ async def _process_job(job_id: str) -> None:
                 "Print attempt failed",
                 extra={
                     "job_id": job_id,
-                    "attempt": attempt,
-                    "max_attempts": job.max_attempts,
+                    "attempt": current_attempt,
+                    "max_attempts": max_attempts,
                     "error_code": error_code,
-                    "will_retry": is_transient and attempt < job.max_attempts,
+                    "will_retry": is_transient and current_attempt < max_attempts,
                 },
             )
 
-            if not is_transient or attempt == job.max_attempts:
+            if not is_transient or current_attempt == max_attempts:
                 await _fail_job(
                     job_id,
                     error_code if error_code in PrinterError._value2member_map_ else PrinterError.COMM_ERROR,
-                    f"Failed after {attempt} attempt(s): {error_code}",
+                    f"Failed after {current_attempt} attempt(s): {error_code}",
                 )
                 return
 
-            backoff = settings.retry_backoff_base ** attempt
+            backoff = settings.retry_backoff_base ** current_attempt
             logger.info(
                 "Retrying after backoff",
                 extra={"job_id": job_id, "backoff_seconds": backoff},

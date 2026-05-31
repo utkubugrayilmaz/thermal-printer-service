@@ -16,7 +16,6 @@ class Settings(BaseSettings):
         case_sensitive=False,
     )
 
-
     app_name: str = "Thermal Printer Service"
     app_version: str = "1.0.0"
     debug: bool = False
@@ -37,7 +36,7 @@ class Settings(BaseSettings):
     paper_roll_initial_meters: float = 50.0
     avg_paper_per_print_cm: float = 10.0
 
-    api_token: str = ""
+    API_TOKEN: str = ""
 
 
 settings = Settings()

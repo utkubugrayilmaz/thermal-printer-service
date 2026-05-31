@@ -14,8 +14,7 @@ from app.services.prediction_service import get_prediction
 # Printer router'ında yazdığımız yetkilendirme fonksiyonunu içeri aktarıyoruz
 from app.routers.printer import verify_token
 
-# Router'a yetkilendirmeyi (dependencies) bağlıyoruz.
-# Artık bu dosyadaki listeleme, export ve prediction uçlarına tokensız erişilemez.
+
 router = APIRouter(prefix="/logs", tags=["Logs"], dependencies=[Depends(verify_token)])
 
 
