@@ -2,46 +2,69 @@ import logging
 import json
 import sys
 from datetime import datetime, timezone
-from typing import Any, Optional
 
 
-class JSONFormatter(logging.Formatter):
+class AcoFormatFormatter(logging.Formatter):
+    """
+    Aco firmasının mülakatındaki kesin log şemasına uygun Formatter.
+    Beklenen: {"ts": "...", "op": "...", "conn": "...", "jobId": "...", "status": "...", "error": {...}}
+    """
 
-    def format(self, record: logging.LogRecord) -> str:
-        log_obj: dict[str, Any] = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "level": record.levelname,
-            "logger": record.name,
-            "message": record.getMessage(),
+    def format(self, record):
+        # 1. Zorunlu "ts" (timestamp) alanı: ISO 8601 formatında ve Z ile bitiyor
+        log_record = {
+            "ts": datetime.fromtimestamp(record.created, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         }
 
-        # Attach any extra fields passed via `extra=`
-        for key, value in record.__dict__.items():
-            if key not in (
-                "args", "asctime", "created", "exc_info", "exc_text",
-                "filename", "funcName", "id", "levelname", "levelno",
-                "lineno", "message", "module", "msecs", "msg", "name",
-                "pathname", "process", "processName", "relativeCreated",
-                "stack_info", "thread", "threadName", "taskName",
-            ):
-                log_obj[key] = value
+        # 2. op (Operasyon): Uygulama genelinde 'event' dediğimiz parametreyi 'op' olarak çeviriyoruz
+        log_record["op"] = getattr(record, "op", getattr(record, "event", "system_log"))
 
-        if record.exc_info:
-            log_obj["exception"] = self.formatException(record.exc_info)
+        # 3. conn (Bağlantı tipi): 'mode' parametresini 'conn' yapıyoruz
+        log_record["conn"] = getattr(record, "conn", getattr(record, "mode", "usb"))
 
-        return json.dumps(log_obj, default=str, ensure_ascii=False)
+        # 4. jobId
+        if hasattr(record, "job_id"):
+            log_record["jobId"] = str(record.job_id)
+        elif hasattr(record, "jobId"):
+            log_record["jobId"] = str(record.jobId)
+
+        # 5. status
+        if hasattr(record, "status"):
+            log_record["status"] = record.status
+        else:
+            log_record["status"] = "info" if record.levelno < logging.ERROR else "error"
+
+        # 6. error (Sadece donanım/iş hatası varsa JSON içine eklenecek)
+        error_code = getattr(record, "error_code", None)
+        if error_code and error_code != "none":
+            log_record["status"] = "error"
+            log_record["error"] = {
+                "code": error_code,
+                "detail": getattr(record, "error_detail", getattr(record, "error_message", record.getMessage()))
+            }
+
+        # Eğer bu bir API isteği/sistem logu ise mesaj kaybolmasın diye ekliyoruz
+        if "jobId" not in log_record and log_record["op"] == "system_log":
+            log_record["message"] = record.getMessage()
+            log_record["level"] = record.levelname
+
+        return json.dumps(log_record)
 
 
-def get_logger(name: str, level: int = logging.INFO) -> logging.Logger:
+def get_logger(name: str):
     logger = logging.getLogger(name)
     if not logger.handlers:
-        handler = logging.StreamHandler(sys.stdout)
-        handler.setFormatter(JSONFormatter())
-        logger.addHandler(handler)
-        logger.setLevel(level)
-        logger.propagate = False
+        logger.setLevel(logging.INFO)
+        formatter = AcoFormatFormatter()
+
+        # Dosyaya (logs.json) yazma
+        file_handler = logging.FileHandler("logs.json", encoding="utf-8")
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+
+        # Terminale (Console) yazma
+        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler.setFormatter(formatter)
+        logger.addHandler(console_handler)
+
     return logger
-
-
-# Shared app logger
-logger = get_logger("thermal_printer")

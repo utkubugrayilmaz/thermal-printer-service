@@ -4,13 +4,19 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 from sqlmodel import Session
+
 from app.db.database import get_session
 from app.db.models import JobStatus
 from app.schemas.schemas import LogsResponse, JobLog, PredictionResponse
 from app.services.printer_service import get_jobs
 from app.services.prediction_service import get_prediction
 
-router = APIRouter(prefix="/logs", tags=["Logs"])
+# Printer router'ında yazdığımız yetkilendirme fonksiyonunu içeri aktarıyoruz
+from app.routers.printer import verify_token
+
+# Router'a yetkilendirmeyi (dependencies) bağlıyoruz.
+# Artık bu dosyadaki listeleme, export ve prediction uçlarına tokensız erişilemez.
+router = APIRouter(prefix="/logs", tags=["Logs"], dependencies=[Depends(verify_token)])
 
 
 @router.get("", response_model=LogsResponse)

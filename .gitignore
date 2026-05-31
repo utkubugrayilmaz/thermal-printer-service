@@ -1,0 +1,29 @@
+# Environments
+.env
+.venv
+env/
+venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+thermal_printer.db
+
+# Logs
+*.log
+logs.json
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

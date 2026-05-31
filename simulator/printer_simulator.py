@@ -102,13 +102,17 @@ class PrinterSimulator:
 
     async def print(self, content: str, content_type: str, copies: int = 1) -> None:
 
-        # --- CHAOS TEST BACKDOOR BAŞLANGICI ---
-        if content_type == "text":
-            if "FAIL_PAPER" in content:
-                self.force_paper_out()
-            elif "FAIL_HEAT" in content:
-                self.force_overheat()
-        # --- CHAOS TEST BACKDOOR BİTİŞİ ---
+        # # --- CHAOS TEST BACKDOOR ---
+        # if content_type == "text":
+        #     if "FAIL_PAPER" in content:
+        #         self.force_paper_out()
+        #     elif "FAIL_HEAT" in content:
+        #         self.force_overheat()
+        #     elif "FAIL_JAM" in content:
+        #         self.force_cover_open()  # Kapak açıldı/sıkıştı hatası verir
+        #     elif "FAIL_COMM" in content:
+        #         raise RuntimeError(PrinterError.COMM_ERROR)  # Direkt COMM hatası fırlat
+        # # ---------------------------
 
         async with self._lock:
 
