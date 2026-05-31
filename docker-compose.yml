@@ -1,0 +1,23 @@
+version: "3.9"
+
+services:
+  thermal-printer-service:
+    build: .
+    container_name: thermal-printer-service
+    ports:
+      - "3000:3000"
+    environment:
+      - CONNECTION_MODE=simulation
+      - DATABASE_URL=sqlite:///./thermal_printer.db
+      - DEBUG=false
+    volumes:
+      - printer_data:/app/thermal_printer.db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  printer_data:

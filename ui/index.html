@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Thermal Printer Service</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0f1117; --surface: #1a1d27; --surface2: #22263a;
+      --accent: #4f8ef7; --accent2: #6ee7b7;
+      --danger: #f87171; --warn: #fbbf24; --success: #34d399;
+      --text: #e2e8f0; --muted: #64748b; --border: #2d3348;
+      --radius: 10px; --font: 'Segoe UI', system-ui, sans-serif;
+    }
+    body { background: var(--bg); color: var(--text); font-family: var(--font); min-height: 100vh; }
+    header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 16px 32px;
+             display: flex; align-items: center; gap: 12px; }
+    header h1 { font-size: 18px; font-weight: 600; }
+    header span { font-size: 12px; color: var(--muted); background: var(--surface2);
+                  padding: 2px 8px; border-radius: 20px; }
+    #status-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted);
+                  margin-left: auto; transition: background .3s; }
+    #status-dot.connected { background: var(--success); box-shadow: 0 0 8px var(--success); }
+    #status-dot.error { background: var(--danger); }
+    main { max-width: 1100px; margin: 0 auto; padding: 32px 24px; display: grid;
+           grid-template-columns: 1fr 1fr; gap: 20px; }
+    @media (max-width: 700px) { main { grid-template-columns: 1fr; } }
+
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
+    .card h2 { font-size: 14px; font-weight: 600; color: var(--muted); text-transform: uppercase;
+               letter-spacing: .06em; margin-bottom: 16px; }
+    .card.wide { grid-column: 1 / -1; }
+
+    /* Status grid */
+    .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .stat { background: var(--surface2); border-radius: 8px; padding: 12px 16px; }
+    .stat .label { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+    .stat .value { font-size: 20px; font-weight: 700; }
+
+    /* Paper bar */
+    .paper-bar-wrap { margin-top: 16px; }
+    .paper-label { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+    .paper-bar { height: 8px; background: var(--surface2); border-radius: 4px; overflow: hidden; }
+    .paper-fill { height: 100%; border-radius: 4px; background: var(--success); transition: width .6s, background .3s; }
+
+    /* Form */
+    label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; margin-top: 14px; }
+    label:first-child { margin-top: 0; }
+    select, textarea, input[type=text], input[type=number] {
+      width: 100%; background: var(--surface2); border: 1px solid var(--border); color: var(--text);
+      border-radius: 8px; padding: 10px 12px; font-family: var(--font); font-size: 14px;
+      outline: none; transition: border-color .2s; }
+    select:focus, textarea:focus, input:focus { border-color: var(--accent); }
+    textarea { resize: vertical; min-height: 90px; }
+    .row { display: flex; gap: 10px; }
+    .row > * { flex: 1; }
+
+    button { cursor: pointer; font-family: var(--font); font-size: 14px; font-weight: 600;
+             padding: 10px 20px; border-radius: 8px; border: none; transition: opacity .2s, transform .1s; }
+    button:hover { opacity: .88; }
+    button:active { transform: scale(.97); }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+    .btn-danger { background: var(--danger); color: #fff; }
+    .btn-row { display: flex; gap: 10px; margin-top: 16px; }
+
+    /* Toast */
+    #toast { position: fixed; bottom: 24px; right: 24px; padding: 12px 20px; border-radius: 8px;
+             font-size: 14px; font-weight: 500; opacity: 0; transition: opacity .3s; pointer-events: none;
+             max-width: 360px; z-index: 999; }
+    #toast.show { opacity: 1; }
+    #toast.ok { background: #064e3b; color: var(--success); border: 1px solid var(--success); }
+    #toast.err { background: #450a0a; color: var(--danger); border: 1px solid var(--danger); }
+    #toast.warn { background: #451a03; color: var(--warn); border: 1px solid var(--warn); }
+
+    /* Log table */
+    .log-table-wrap { overflow-x: auto; margin-top: 4px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th { text-align: left; color: var(--muted); font-weight: 500; font-size: 11px;
+         padding: 6px 10px; border-bottom: 1px solid var(--border); }
+    td { padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    tr:last-child td { border-bottom: none; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+    .badge-queued    { background: #1e2a4a; color: #93c5fd; }
+    .badge-processing{ background: #2a1e4a; color: #c4b5fd; }
+    .badge-success   { background: #064e3b; color: var(--success); }
+    .badge-failed    { background: #450a0a; color: var(--danger); }
+    .badge-cancelled { background: #2a2a2a; color: var(--muted); }
+    .reprint-btn { font-size: 11px; padding: 3px 10px; border-radius: 6px;
+                   background: var(--surface2); border: 1px solid var(--border); color: var(--text); cursor: pointer; }
+    .reprint-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .empty { text-align: center; color: var(--muted); padding: 24px; font-size: 13px; }
+  </style>
+</head>
+<body>
+<header>
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+    <rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/>
+    <line x1="12" y1="12" x2="12" y2="16"/><line x1="10" y1="14" x2="14" y2="14"/>
+  </svg>
+  <h1>Thermal Printer Service</h1>
+  <span id="version-badge">v1.0.0</span>
+  <div id="status-dot" title="Printer status"></div>
+</header>
+
+<main>
+  <!-- Status -->
+  <div class="card">
+    <h2>Printer Status</h2>
+    <div class="stat-grid">
+      <div class="stat"><div class="label">Connection</div><div class="value" id="s-connected">—</div></div>
+      <div class="stat"><div class="label">Mode</div><div class="value" id="s-mode">—</div></div>
+      <div class="stat"><div class="label">Queue</div><div class="value" id="s-queue">—</div></div>
+      <div class="stat"><div class="label">State</div><div class="value" id="s-state">—</div></div>
+    </div>
+    <div class="paper-bar-wrap">
+      <div class="paper-label"><span>Paper remaining</span><span id="paper-pct">—</span></div>
+      <div class="paper-bar"><div class="paper-fill" id="paper-fill" style="width:0%"></div></div>
+    </div>
+  </div>
+
+  <!-- Prediction -->
+  <div class="card">
+    <h2>Paper Prediction</h2>
+    <div class="stat-grid">
+      <div class="stat"><div class="label">Remaining (cm)</div><div class="value" id="p-cm">—</div></div>
+      <div class="stat"><div class="label">Est. prints left</div><div class="value" id="p-prints">—</div></div>
+    </div>
+    <p id="p-msg" style="margin-top:14px;font-size:13px;color:var(--muted);line-height:1.5"></p>
+    <div class="btn-row">
+      <button class="btn-secondary" onclick="refreshAll()">↻ Refresh</button>
+      <a href="/logs/export" target="_blank"><button class="btn-secondary">↓ Export CSV</button></a>
+    </div>
+  </div>
+
+  <!-- Print form -->
+  <div class="card">
+    <h2>New Print Job</h2>
+    <label>Content type</label>
+    <select id="f-type">
+      <option value="text">Text</option>
+      <option value="image">Image (base64)</option>
+      <option value="qr">QR Code</option>
+    </select>
+    <label>Content</label>
+    <textarea id="f-content" placeholder="Enter text to print…"></textarea>
+    <div class="row">
+      <div>
+        <label>Copies</label>
+        <input type="number" id="f-copies" value="1" min="1" max="20"/>
+      </div>
+      <div>
+        <label>Idempotency key (optional)</label>
+        <input type="text" id="f-idem" placeholder="e.g. order-12345"/>
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn-primary" onclick="submitPrint()">Print</button>
+      <button class="btn-secondary" onclick="clearForm()">Clear</button>
+    </div>
+  </div>
+
+  <!-- Connect panel -->
+  <div class="card">
+    <h2>Connection</h2>
+    <label>Mode</label>
+    <select id="c-mode">
+      <option value="simulation" selected>Simulation</option>
+      <option value="usb">USB</option>
+      <option value="ethernet">Ethernet</option>
+    </select>
+    <div id="eth-fields" style="display:none">
+      <label>Host</label>
+      <input type="text" id="c-host" placeholder="192.168.1.100"/>
+      <label>Port</label>
+      <input type="number" id="c-port" value="9100"/>
+    </div>
+    <div class="btn-row">
+      <button class="btn-primary" onclick="connect()">Connect</button>
+      <button class="btn-secondary" onclick="checkHealth()">Health check</button>
+    </div>
+  </div>
+
+  <!-- Log table -->
+  <div class="card wide">
+    <h2>Recent Print Jobs <span id="log-count" style="font-weight:400;color:var(--muted)"></span></h2>
+    <div class="log-table-wrap">
+      <table id="log-table">
+        <thead><tr>
+          <th>Job ID</th><th>Type</th><th>Status</th><th>Error</th>
+          <th>Attempts</th><th>Created</th><th>Actions</th>
+        </tr></thead>
+        <tbody id="log-body"><tr><td colspan="7" class="empty">Loading…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+<div id="toast"></div>
+
+<script>
+const API = '';  // same origin
+
+// Mode toggle
+document.getElementById('c-mode').addEventListener('change', e => {
+  document.getElementById('eth-fields').style.display = e.target.value === 'ethernet' ? 'block' : 'none';
+});
+
+async function api(method, path, body) {
+  const opts = { method, headers: {'Content-Type':'application/json'} };
+  if (body) opts.body = JSON.stringify(body);
+  const r = await fetch(API + path, opts);
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data?.error?.message || JSON.stringify(data));
+  return data;
+}
+
+function toast(msg, type='ok') {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = 'show ' + type;
+  clearTimeout(t._t);
+  t._t = setTimeout(() => t.className = '', 3500);
+}
+
+async function refreshStatus() {
+  try {
+    const s = await api('GET', '/printer/status');
+    document.getElementById('s-connected').textContent = s.connected ? 'Yes' : 'No';
+    document.getElementById('s-mode').textContent = s.mode;
+    document.getElementById('s-queue').textContent = s.queue_depth;
+    document.getElementById('s-state').textContent = s.status;
+    const dot = document.getElementById('status-dot');
+    dot.className = s.connected ? (s.status === 'error' ? 'error' : 'connected') : '';
+    const pct = s.paper_remaining_pct ?? 0;
+    document.getElementById('paper-pct').textContent = pct >= 0 ? pct.toFixed(1) + '%' : 'N/A';
+    const fill = document.getElementById('paper-fill');
+    fill.style.width = pct + '%';
+    fill.style.background = pct < 15 ? 'var(--danger)' : pct < 30 ? 'var(--warn)' : 'var(--success)';
+  } catch(e) {}
+}
+
+async function refreshPrediction() {
+  try {
+    const p = await api('GET', '/logs/prediction');
+    document.getElementById('p-cm').textContent = p.paper_remaining_cm.toFixed(1);
+    document.getElementById('p-prints').textContent = p.estimated_prints_left;
+    document.getElementById('p-msg').textContent = p.roll_eta_message;
+  } catch(e) {}
+}
+
+async function refreshLogs() {
+  try {
+    const data = await api('GET', '/logs?page_size=30');
+    document.getElementById('log-count').textContent = `(${data.total} total)`;
+    const tbody = document.getElementById('log-body');
+    if (!data.jobs.length) { tbody.innerHTML = '<tr><td colspan="7" class="empty">No jobs yet</td></tr>'; return; }
+    tbody.innerHTML = data.jobs.map(j => `
+      <tr>
+        <td style="font-family:monospace;font-size:11px;color:var(--muted)">${j.id.split('-')[0]}…</td>
+        <td>${j.content_type}</td>
+        <td><span class="badge badge-${j.status}">${j.status}</span></td>
+        <td style="font-size:11px;color:var(--danger)">${j.error_code !== 'none' ? j.error_code : ''}</td>
+        <td>${j.attempt}</td>
+        <td style="font-size:11px;color:var(--muted)">${new Date(j.created_at).toLocaleTimeString('tr-TR')}</td>
+        <td><button class="reprint-btn" onclick="reprint('${j.id}')">↺ Reprint</button></td>
+      </tr>`).join('');
+  } catch(e) {}
+}
+
+function refreshAll() {
+  refreshStatus(); refreshPrediction(); refreshLogs();
+}
+
+async function connect() {
+  const mode = document.getElementById('c-mode').value;
+  const body = { mode };
+  if (mode === 'ethernet') {
+    body.host = document.getElementById('c-host').value;
+    body.port = parseInt(document.getElementById('c-port').value);
+  }
+  try {
+    const r = await api('POST', '/printer/connect', body);
+    toast(r.message, r.connected ? 'ok' : 'err');
+    refreshStatus();
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+async function checkHealth() {
+  try {
+    const h = await api('GET', '/health');
+    toast(`Health: ${h.status} | DB: ${h.db_ok ? 'ok' : 'down'} | Uptime: ${h.uptime_seconds}s`, h.status === 'ok' ? 'ok' : 'warn');
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+async function submitPrint() {
+  const content = document.getElementById('f-content').value.trim();
+  if (!content) { toast('Content is required', 'warn'); return; }
+  const body = {
+    content,
+    content_type: document.getElementById('f-type').value,
+    copies: parseInt(document.getElementById('f-copies').value),
+    idempotency_key: document.getElementById('f-idem').value.trim() || undefined,
+  };
+  try {
+    const r = await api('POST', '/printer/print', body);
+    toast(`Job queued: ${r.job_id.split('-')[0]}…`, 'ok');
+    setTimeout(refreshAll, 500);
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+async function reprint(jobId) {
+  try {
+    const r = await api('POST', '/printer/reprint', { job_id: jobId });
+    toast(`Reprint queued: ${r.new_job_id.split('-')[0]}…`, 'ok');
+    setTimeout(refreshAll, 500);
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+function clearForm() {
+  document.getElementById('f-content').value = '';
+  document.getElementById('f-idem').value = '';
+  document.getElementById('f-copies').value = 1;
+}
+
+// Boot
+refreshAll();
+setInterval(refreshAll, 5000);  // auto-refresh every 5s
+</script>
+</body>
+</html>
