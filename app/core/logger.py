@@ -6,7 +6,6 @@ from typing import Any, Optional
 
 
 class JSONFormatter(logging.Formatter):
-    """Formats every log record as a single JSON line."""
 
     def format(self, record: logging.LogRecord) -> str:
         log_obj: dict[str, Any] = {

@@ -5,8 +5,6 @@ from app.db.models import JobStatus, ContentType, PrinterError
 from app.config import ConnectionMode
 
 
-# ── Printer connection ──────────────────────────────────────────────────────
-
 class ConnectRequest(BaseModel):
     mode: ConnectionMode = ConnectionMode.SIMULATION
     host: Optional[str] = None
@@ -20,8 +18,6 @@ class ConnectResponse(BaseModel):
     mode: ConnectionMode
     message: str
 
-
-# ── Print job ───────────────────────────────────────────────────────────────
 
 class PrintRequest(BaseModel):
     content: str = Field(..., min_length=1, max_length=10_000)
@@ -44,8 +40,6 @@ class PrintResponse(BaseModel):
     idempotency_key: Optional[str] = None
 
 
-# ── Reprint ─────────────────────────────────────────────────────────────────
-
 class ReprintRequest(BaseModel):
     job_id: str = Field(..., min_length=36, max_length=36)
 
@@ -57,8 +51,6 @@ class ReprintResponse(BaseModel):
     message: str
 
 
-# ── Status ──────────────────────────────────────────────────────────────────
-
 class PrinterStatusResponse(BaseModel):
     connected: bool
     mode: ConnectionMode
@@ -68,8 +60,6 @@ class PrinterStatusResponse(BaseModel):
     paper_remaining_pct: Optional[float] = None
     uptime_seconds: float
 
-
-# ── Logs ────────────────────────────────────────────────────────────────────
 
 class JobLog(BaseModel):
     id: str
@@ -94,9 +84,6 @@ class LogsResponse(BaseModel):
     page_size: int
     jobs: List[JobLog]
 
-
-# ── Health ──────────────────────────────────────────────────────────────────
-
 class HealthResponse(BaseModel):
     status: str          # ok | degraded | down
     version: str
@@ -105,8 +92,6 @@ class HealthResponse(BaseModel):
     db_ok: bool
     uptime_seconds: float
 
-
-# ── Prediction ──────────────────────────────────────────────────────────────
 
 class PredictionResponse(BaseModel):
     paper_remaining_cm: float

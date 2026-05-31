@@ -1,22 +1,13 @@
-"""
-API Integration Tests
----------------------
-Uses FastAPI's TestClient (sync) so no real printer is needed.
-Run: pytest tests/ -v
-"""
-
 import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import SQLModel, create_engine, Session
 from sqlmodel.pool import StaticPool
 
-# Use in-memory SQLite for tests
 TEST_DB_URL = "sqlite://"
 
 
 @pytest.fixture(scope="session", autouse=True)
 def override_db():
-    """Patch the database engine to use an in-memory SQLite instance."""
     from app.db import database
     import app.services.queue_worker as qw
 
@@ -27,7 +18,6 @@ def override_db():
     )
     SQLModel.metadata.create_all(test_engine)
 
-    # Patch both the database module AND the queue worker (which imports engine directly)
     database.engine = test_engine
     qw.engine = test_engine
 
@@ -46,7 +36,6 @@ def client():
         yield c
 
 
-# ── Health ──────────────────────────────────────────────────────────────────
 
 def test_health(client):
     r = client.get("/health")
@@ -56,15 +45,12 @@ def test_health(client):
     assert body["db_ok"] is True
 
 
-# ── Connect ─────────────────────────────────────────────────────────────────
-
 def test_connect_simulation(client):
     r = client.post("/printer/connect", json={"mode": "simulation"})
     assert r.status_code == 200
     assert r.json()["connected"] is True
 
 
-# ── Status ──────────────────────────────────────────────────────────────────
 
 def test_status(client):
     r = client.get("/printer/status")
@@ -74,7 +60,6 @@ def test_status(client):
     assert "queue_depth" in body
 
 
-# ── Print ────────────────────────────────────────────────────────────────────
 
 def test_print_text(client):
     r = client.post("/printer/print", json={
@@ -98,10 +83,9 @@ def test_print_idempotency(client):
     r1 = client.post("/printer/print", json=payload)
     r2 = client.post("/printer/print", json=payload)
     assert r1.status_code == 202
-    assert r2.status_code == 409  # conflict
+    assert r2.status_code == 409
 
 
-# ── Reprint ──────────────────────────────────────────────────────────────────
 
 def test_reprint_existing_job(client):
     r = client.post("/printer/print", json={"content": "Reprint me"})
@@ -116,7 +100,6 @@ def test_reprint_nonexistent_job(client):
     assert r.status_code == 404
 
 
-# ── Logs ─────────────────────────────────────────────────────────────────────
 
 def test_logs_list(client):
     r = client.get("/logs")
@@ -130,8 +113,7 @@ def test_logs_export_csv(client):
     r = client.get("/logs/export")
     assert r.status_code == 200
     assert "text/csv" in r.headers["content-type"]
-    assert "id" in r.text  # CSV header
-
+    assert "id" in r.text
 
 def test_logs_prediction(client):
     r = client.get("/logs/prediction")
@@ -140,8 +122,6 @@ def test_logs_prediction(client):
     assert "paper_remaining_cm" in body
     assert "estimated_prints_left" in body
 
-
-# ── QR print ─────────────────────────────────────────────────────────────────
 
 def test_print_qr(client):
     r = client.post("/printer/print", json={

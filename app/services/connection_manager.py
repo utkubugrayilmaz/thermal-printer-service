@@ -1,11 +1,3 @@
-"""
-Connection Manager
-------------------
-Abstracts the physical connection to the printer.
-In SIMULATION mode uses the software simulator.
-In USB / ETHERNET mode delegates to python-escpos (if installed).
-"""
-
 import asyncio
 import time
 from typing import Optional
@@ -24,11 +16,8 @@ class ConnectionManager:
         self._connect_time: Optional[float] = None
         self._reconnect_task: Optional[asyncio.Task] = None
 
-        # Lazy import to avoid hard dependency when in simulation mode
         self._real_printer = None
         self._simulator = None
-
-    # ── Public API ───────────────────────────────────────────────────────────
 
     async def connect(self, mode: Optional[ConnectionMode] = None) -> None:
         self._mode = mode or settings.connection_mode
@@ -87,7 +76,6 @@ class ConnectionManager:
     async def check_hardware_status(self) -> Optional[PrinterError]:
         if self._mode == ConnectionMode.SIMULATION and self._simulator:
             return await self._simulator.check_status()
-        # For real printers, query DLE EOT status bytes via escpos
         return None
 
     async def print(self, content: str, content_type: str, copies: int = 1) -> None:
@@ -101,9 +89,7 @@ class ConnectionManager:
     def get_paper_info(self) -> tuple[float, float]:
         if self._mode == ConnectionMode.SIMULATION and self._simulator:
             return self._simulator.get_paper_remaining()
-        return (-1.0, -1.0)  # real printers rarely report paper level
-
-    # ── USB / Ethernet (real hardware) ───────────────────────────────────────
+        return (-1.0, -1.0)
 
     async def _connect_usb(self) -> None:
         try:
@@ -139,7 +125,6 @@ class ConnectionManager:
             raise RuntimeError(PrinterError.COMM_ERROR) from e
 
     async def _print_real(self, content: str, content_type: str, copies: int) -> None:
-        """Delegate to python-escpos for real hardware."""
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(None, self._sync_print, content, content_type, copies)
 
@@ -158,5 +143,4 @@ class ConnectionManager:
             p.cut()
 
 
-# Module-level singleton
 connection_manager = ConnectionManager()

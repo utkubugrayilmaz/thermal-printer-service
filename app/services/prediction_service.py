@@ -1,10 +1,3 @@
-"""
-Prediction Service
-------------------
-Estimates remaining paper based on consumed usage tracked per job.
-Bonus feature: provides a human-readable ETA message.
-"""
-
 from sqlmodel import Session, select, func
 from app.db.models import Job, JobStatus
 from app.config import settings
@@ -16,7 +9,6 @@ LOW_PAPER_THRESHOLD_PCT = 15.0
 
 
 def get_prediction(session: Session) -> PredictionResponse:
-    # Total paper used across all successful jobs
     result = session.exec(
         select(func.sum(Job.estimated_paper_cm)).where(
             Job.status == JobStatus.SUCCESS
@@ -31,7 +23,6 @@ def get_prediction(session: Session) -> PredictionResponse:
     avg_cm = settings.avg_paper_per_print_cm
     prints_left = int(remaining_cm / avg_cm) if avg_cm > 0 else 0
 
-    # Build a readable message
     if remaining_pct <= 0:
         message = "Paper roll is empty. Please replace immediately."
     elif remaining_pct < LOW_PAPER_THRESHOLD_PCT:
@@ -41,7 +32,6 @@ def get_prediction(session: Session) -> PredictionResponse:
     else:
         message = f"Paper OK. Approximately {prints_left} prints remaining ({remaining_pct}%)."
 
-    # Also check live simulator state for real-time accuracy
     if connection_manager.is_connected():
         live_cm, live_pct = connection_manager.get_paper_info()
         if live_cm >= 0:

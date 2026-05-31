@@ -16,26 +16,22 @@ from app.core.exceptions import printer_exception_handler
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # ── Startup ────────────────────────────────────────────────────────────
     logger.info(
         "Starting up",
         extra={"app": settings.app_name, "version": settings.app_version},
     )
     create_db_and_tables()
 
-    # Auto-connect in simulation mode on startup
     if not connection_manager.is_connected():
         try:
             await connection_manager.connect()
         except Exception as exc:
             logger.warning("Auto-connect failed", extra={"error": str(exc)})
 
-    # Launch background queue worker
     worker_task = asyncio.create_task(worker_loop(), name="queue_worker")
 
-    yield  # ← app is running
+    yield
 
-    # ── Shutdown ───────────────────────────────────────────────────────────
     logger.info("Shutting down")
     worker_task.cancel()
     try:
@@ -57,7 +53,6 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
-# ── Middleware ─────────────────────────────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -65,7 +60,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── Exception handlers ─────────────────────────────────────────────────────
 app.add_exception_handler(HTTPException, printer_exception_handler)
 
 
@@ -78,17 +72,14 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
     )
 
 
-# ── Routers ────────────────────────────────────────────────────────────────
 app.include_router(printer_router)
 app.include_router(logs_router)
 app.include_router(health_router)
 
-# ── Static UI ──────────────────────────────────────────────────────────────
 try:
     app.mount("/ui", StaticFiles(directory="ui", html=True), name="ui")
 except RuntimeError:
-    pass  # ui folder may not exist in some deploy envs
-
+    pass
 
 @app.get("/", include_in_schema=False)
 async def root():

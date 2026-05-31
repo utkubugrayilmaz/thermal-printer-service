@@ -13,8 +13,6 @@ _start = time.monotonic()
 
 @router.get("/health", response_model=HealthResponse)
 def health():
-    """Liveness + readiness check."""
-    # Quick DB ping
     db_ok = False
     try:
         with engine.connect() as conn:

@@ -20,7 +20,6 @@ def list_logs(
     page_size: int = Query(default=50, ge=1, le=200),
     session: Session = Depends(get_session),
 ):
-    """List all print jobs with optional status filter and pagination."""
     jobs, total = get_jobs(session, status=status, page=page, page_size=page_size)
     return LogsResponse(
         total=total,
@@ -35,7 +34,6 @@ def export_logs_csv(
     status: Optional[JobStatus] = Query(default=None),
     session: Session = Depends(get_session),
 ):
-    """Export job log as a downloadable CSV file."""
     jobs, _ = get_jobs(session, status=status, page=1, page_size=10_000)
 
     output = io.StringIO()
@@ -75,5 +73,4 @@ def export_logs_csv(
 
 @router.get("/prediction", response_model=PredictionResponse)
 def paper_prediction(session: Session = Depends(get_session)):
-    """Predict remaining paper and estimated prints left."""
     return get_prediction(session)

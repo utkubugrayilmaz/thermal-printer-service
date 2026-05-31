@@ -1,11 +1,3 @@
-"""
-Queue Worker
-------------
-Runs as a background asyncio task inside FastAPI's lifespan.
-Pulls jobs from an asyncio.Queue, executes them, updates DB status.
-Implements exponential backoff retry on transient failures.
-"""
-
 import asyncio
 import math
 from datetime import datetime, timezone
@@ -18,22 +10,15 @@ from app.core.logger import get_logger
 
 logger = get_logger("queue_worker")
 
-# In-memory queue — jobs are DB-persisted so a restart can re-queue them
 job_queue: asyncio.Queue[str] = asyncio.Queue(maxsize=100)
 
 
 async def enqueue(job_id: str) -> None:
-    """Add a job_id to the in-memory queue (non-blocking)."""
     await job_queue.put(job_id)
     logger.info("Job enqueued", extra={"job_id": job_id, "queue_depth": job_queue.qsize()})
 
 
 async def worker_loop() -> None:
-    """
-    Main worker loop. Runs forever until cancelled.
-    On startup, re-queues any jobs that were left in QUEUED or PROCESSING
-    state (e.g. after a crash).
-    """
     logger.info("Queue worker started")
     await _recover_stale_jobs()
 
@@ -61,9 +46,9 @@ async def _process_job(job_id: str) -> None:
             return
 
         if job.status not in (JobStatus.QUEUED, JobStatus.PROCESSING):
-            return  # already handled (duplicate enqueue)
+            return
 
-        # Mark as processing
+
         job.status = JobStatus.PROCESSING
         job.attempt += 1
         job.updated_at = datetime.now(timezone.utc)
@@ -75,7 +60,6 @@ async def _process_job(job_id: str) -> None:
         extra={"job_id": job_id, "attempt": job.attempt, "content_type": job.content_type},
     )
 
-    # Check hardware before attempting
     if not connection_manager.is_connected():
         await _fail_job(job_id, PrinterError.COMM_ERROR, "Printer not connected")
         return
@@ -85,7 +69,6 @@ async def _process_job(job_id: str) -> None:
         await _fail_job(job_id, hw_error, f"Hardware error: {hw_error}")
         return
 
-    # Attempt print with retry/backoff
     last_error: str = ""
     for attempt in range(1, job.max_attempts + 1):
         try:
@@ -94,7 +77,6 @@ async def _process_job(job_id: str) -> None:
                 content_type=job.content_type,
                 copies=job.copies,
             )
-            # Success
             await _succeed_job(job_id)
             return
 
@@ -119,7 +101,6 @@ async def _process_job(job_id: str) -> None:
             )
 
             if not is_transient or attempt == job.max_attempts:
-                # Non-retriable error or exhausted retries
                 await _fail_job(
                     job_id,
                     error_code if error_code in PrinterError._value2member_map_ else PrinterError.COMM_ERROR,
@@ -127,7 +108,6 @@ async def _process_job(job_id: str) -> None:
                 )
                 return
 
-            # Exponential backoff: 2^attempt seconds (2s, 4s, 8s…)
             backoff = settings.retry_backoff_base ** attempt
             logger.info(
                 "Retrying after backoff",
@@ -168,7 +148,6 @@ async def _fail_job(job_id: str, error_code, message: str) -> None:
 
 
 async def _recover_stale_jobs() -> None:
-    """Re-queue jobs that were interrupted by a previous crash."""
     from sqlmodel import select
     with Session(engine) as session:
         stale = session.exec(

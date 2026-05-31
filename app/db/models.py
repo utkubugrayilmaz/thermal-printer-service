@@ -39,28 +39,22 @@ class Job(SQLModel, table=True):
     )
     idempotency_key: Optional[str] = Field(default=None, index=True, unique=True)
 
-    # Content
     content_type: ContentType = Field(default=ContentType.TEXT)
     content: str = Field(default="")           # text body or base64 image
     copies: int = Field(default=1)
 
-    # State
     status: JobStatus = Field(default=JobStatus.QUEUED, index=True)
     error_code: PrinterError = Field(default=PrinterError.NONE)
     error_message: Optional[str] = Field(default=None)
 
-    # Retry tracking
     attempt: int = Field(default=0)
     max_attempts: int = Field(default=3)
 
-    # Reprint tracking
     original_job_id: Optional[str] = Field(default=None)
     is_reprint: bool = Field(default=False)
 
-    # Timestamps
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     completed_at: Optional[datetime] = Field(default=None)
 
-    # Paper tracking
     estimated_paper_cm: float = Field(default=0.0)

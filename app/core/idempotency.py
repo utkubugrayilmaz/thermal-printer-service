@@ -5,10 +5,6 @@ from app.core.exceptions import IdempotencyConflictError
 
 
 def check_idempotency(session: Session, key: Optional[str]) -> None:
-    """
-    Raises IdempotencyConflictError if a job with this key already exists.
-    No-op if key is None.
-    """
     if not key:
         return
 

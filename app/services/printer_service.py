@@ -1,9 +1,3 @@
-"""
-Printer Service
----------------
-Orchestrates print requests: validates, persists to DB, enqueues, returns immediately.
-"""
-
 from datetime import datetime, timezone
 from typing import Optional
 from sqlmodel import Session, select
@@ -18,19 +12,16 @@ from app.config import settings
 
 logger = get_logger("printer_service")
 
-# Average paper use per print (cm) — used for prediction
 _AVG_CM_PER_PRINT = settings.avg_paper_per_print_cm
 
 
 async def submit_print_job(session: Session, req: PrintRequest) -> Job:
-    """Validate → idempotency check → persist → enqueue → return job."""
 
     if not connection_manager.is_connected():
         raise PrinterNotConnectedError()
 
     check_idempotency(session, req.idempotency_key)
 
-    # Estimate paper usage
     lines = len(req.content.splitlines()) + 3
     estimated_cm = (lines * 0.33) * req.copies
 
@@ -62,7 +53,6 @@ async def submit_print_job(session: Session, req: PrintRequest) -> Job:
 
 
 async def submit_reprint(session: Session, req: ReprintRequest) -> Job:
-    """Find original job, create a reprint clone, enqueue it."""
 
     if not connection_manager.is_connected():
         raise PrinterNotConnectedError()
@@ -103,7 +93,7 @@ def get_jobs(
     query = select(Job)
     if status:
         query = query.where(Job.status == status)
-    query = query.order_by(Job.created_at.desc())  # type: ignore
+    query = query.order_by(Job.created_at.desc())
 
     total = len(session.exec(query).all())
     offset = (page - 1) * page_size

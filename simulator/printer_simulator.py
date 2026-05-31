@@ -1,11 +1,3 @@
-"""
-Printer Simulator
------------------
-Mimics the behavior of a real ESC/POS thermal printer without hardware.
-Implements the same interface as a real connection so services are unaware
-of whether they're talking to real hardware or the simulator.
-"""
-
 import asyncio
 import random
 from datetime import datetime, timezone
@@ -15,7 +7,6 @@ from app.core.logger import get_logger
 
 logger = get_logger("simulator")
 
-# ESC/POS command constants (real protocol)
 ESC = b'\x1b'
 GS  = b'\x1d'
 
@@ -33,7 +24,6 @@ CMD_QR_CORRECTION = GS  + b'(k\x03\x00\x31\x45\x30'
 
 
 class SimulatedPrinterState:
-    """Holds mutable hardware state."""
 
     def __init__(self, paper_meters: float = 50.0):
         self.paper_remaining_cm: float = paper_meters * 100
@@ -50,13 +40,7 @@ class SimulatedPrinterState:
 
 
 class PrinterSimulator:
-    """
-    Simulates a Cashino KP-300/KP-301H/KP-302 thermal printer.
-    Supports text, image (raster), and QR code content types.
-    Introduces realistic latency and occasional transient errors.
-    """
 
-    # How often to simulate a transient error (0.0 = never, 0.1 = 10%)
     ERROR_RATE: float = 0.05
 
     def __init__(self):
@@ -76,7 +60,6 @@ class PrinterSimulator:
         return self.state.connected
 
     async def check_status(self) -> Optional[PrinterError]:
-        """Returns a hardware error if one exists, else None."""
         if self.state.paper_remaining_cm <= 0:
             return PrinterError.PAPER_OUT
         if self.state.is_cover_open:
@@ -86,7 +69,6 @@ class PrinterSimulator:
         return None
 
     def _build_escpos_commands(self, content: str, content_type: str) -> bytes:
-        """Builds real ESC/POS byte sequence for the given content."""
         buf = bytearray()
         buf += CMD_INIT
 
@@ -98,8 +80,6 @@ class PrinterSimulator:
             buf += CMD_FEED_LINE * 3
 
         elif content_type == "image":
-            # In simulation we just record the intent; real driver would
-            # convert to raster via GS v 0 command
             buf += CMD_ALIGN_CENTER
             buf += b"[IMAGE DATA - raster bitmap would follow]\n"
             buf += CMD_FEED_LINE * 2
@@ -110,10 +90,10 @@ class PrinterSimulator:
             buf += CMD_QR_MODEL
             buf += CMD_QR_SIZE
             buf += CMD_QR_CORRECTION
-            # GS ( k pL pH 31 50 30 <data>
+
             buf += GS + b'(k' + bytes([length & 0xFF, (length >> 8) & 0xFF]) + b'\x31\x50\x30'
             buf += data
-            # GS ( k 3 0 31 51 30  — print QR
+
             buf += GS + b'(k\x03\x00\x31\x51\x30'
             buf += CMD_FEED_LINE * 2
 
@@ -121,17 +101,22 @@ class PrinterSimulator:
         return bytes(buf)
 
     async def print(self, content: str, content_type: str, copies: int = 1) -> None:
-        """
-        Simulate a print job. Raises RuntimeError with a PrinterError code
-        if a hardware condition is detected.
-        """
+
+        # --- CHAOS TEST BACKDOOR BAŞLANGICI ---
+        if content_type == "text":
+            if "FAIL_PAPER" in content:
+                self.force_paper_out()
+            elif "FAIL_HEAT" in content:
+                self.force_overheat()
+        # --- CHAOS TEST BACKDOOR BİTİŞİ ---
+
         async with self._lock:
-            # Pre-flight hardware check
+
             hw_error = await self.check_status()
             if hw_error:
                 raise RuntimeError(hw_error)
 
-            # Random transient error simulation
+
             if random.random() < self.ERROR_RATE:
                 raise RuntimeError(PrinterError.COMM_ERROR)
 
@@ -141,11 +126,10 @@ class PrinterSimulator:
                     commands = self._build_escpos_commands(content, content_type)
                     cmd_bytes = len(commands)
 
-                    # Realistic print latency: ~2KB/s for a typical thermal head
+
                     latency = min(cmd_bytes / 2048, 2.0)
                     await asyncio.sleep(latency)
 
-                    # Deduct paper usage
                     lines = len(content.splitlines()) + 3  # +3 for header/footer
                     paper_used_cm = lines * 0.33           # ~3.3mm per line
                     self.state.paper_remaining_cm = max(
@@ -168,13 +152,11 @@ class PrinterSimulator:
                 self.state.busy = False
 
     def get_paper_remaining(self) -> tuple[float, float]:
-        """Returns (cm_remaining, pct_remaining)."""
         return self.state.paper_remaining_cm, self.state.paper_remaining_pct
 
     def get_print_count(self) -> int:
         return self.state.print_count
 
-    # ── Test helpers ────────────────────────────────────────────────────────
 
     def force_paper_out(self) -> None:
         self.state.paper_remaining_cm = 0.0
@@ -186,5 +168,4 @@ class PrinterSimulator:
         self.state.is_overheated = hot
 
 
-# Module-level singleton — shared across the app
 simulator = PrinterSimulator()

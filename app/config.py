@@ -16,32 +16,27 @@ class Settings(BaseSettings):
         case_sensitive=False,
     )
 
-    # App
+
     app_name: str = "Thermal Printer Service"
     app_version: str = "1.0.0"
     debug: bool = False
     port: int = 3000
 
-    # Printer connection
     connection_mode: ConnectionMode = ConnectionMode.SIMULATION
     printer_usb_vendor_id: str = "0x0519"
     printer_usb_product_id: str = "0x0001"
     printer_eth_host: str = "192.168.1.100"
     printer_eth_port: int = 9100
 
-    # Queue & retry
     max_retry_attempts: int = 3
     retry_backoff_base: float = 2.0   # seconds, exponential
     job_timeout_seconds: int = 30
 
-    # Database
     database_url: str = "sqlite:///./thermal_printer.db"
 
-    # Paper tracking (for prediction)
     paper_roll_initial_meters: float = 50.0
     avg_paper_per_print_cm: float = 10.0
 
-    # Auth (optional token)
     api_token: str = ""
 
 
